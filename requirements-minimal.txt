@@ -1,0 +1,20 @@
+# Minimal requirements for Railway deployment
+# Core dependencies only - Railway will resolve compatible versions
+
+# Essential packages
+numpy
+pandas
+requests
+python-binance
+ccxt
+
+# Data processing
+yfinance
+beautifulsoup4
+
+# Utilities
+python-dateutil
+pytz>=2022.5
+
+# System
+certifi
