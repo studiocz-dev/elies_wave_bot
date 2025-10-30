@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  elliott-wave-bot:
+    build: .
+    container_name: elliott_wave_trading_bot
+    restart: unless-stopped
+    
+    environment:
+      # Bot Configuration
+      - PYTHONUNBUFFERED=1
+      - TZ=UTC
+      
+      # Binance API (set these in .env file)
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - USE_TESTNET=${USE_TESTNET:-true}
+    
+    volumes:
+      # Persist configuration
+      - ./bot_config.json:/app/bot_config.json:ro
+      
+      # Persist logs
+      - bot_logs:/app/logs
+      
+      # Optional: Mount custom configuration
+      - ./enhanced_bot_config.json:/app/enhanced_bot_config.json:ro
+    
+    networks:
+      - bot_network
+    
+    # Resource limits (good for free tier hosting)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if any(f.endswith('.log') for f in os.listdir('.')) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot_logs:
+    driver: local
+
+networks:
+  bot_network:
+    driver: bridge

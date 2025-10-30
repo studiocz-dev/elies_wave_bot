@@ -1,0 +1,14 @@
+{
+    "binance_api_key": "your_actual_binance_api_key_here",
+    "binance_api_secret": "your_actual_binance_secret_key_here",
+    "testnet": true,
+    "trading_config": {
+        "symbols": ["BTCUSDT", "ETHUSDT", "ADAUSDT"],
+        "intervals": ["1h", "4h"],
+        "risk_per_trade": 0.01,
+        "min_confidence": 0.7,
+        "min_risk_reward": 2.0,
+        "max_positions": 3,
+        "account_balance": 10000
+    }
+}

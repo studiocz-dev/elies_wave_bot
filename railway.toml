@@ -1,0 +1,22 @@
+# Deploy Elliott Wave Trading Bot to Railway.app
+# Railway.app offers 500 hours/month free - perfect for trading bots!
+
+# This file configures Railway deployment
+# Visit: https://railway.app
+
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+startCommand = "python docker_bot.py"
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 10
+
+[env]
+PYTHONUNBUFFERED = "1"
+TZ = "UTC"
+
+# These will be set in Railway dashboard:
+# BINANCE_API_KEY = "your_api_key"
+# BINANCE_API_SECRET = "your_api_secret" 
+# USE_TESTNET = "true"

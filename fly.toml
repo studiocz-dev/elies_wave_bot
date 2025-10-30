@@ -1,0 +1,36 @@
+# Fly.io deployment configuration
+# Fly.io offers 3 shared-cpu VMs free - great for trading bots!
+
+app = "elliott-wave-bot"
+primary_region = "ewr"
+
+[build]
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  TZ = "UTC"
+
+[processes]
+  app = "python docker_bot.py"
+
+[[services]]
+  http_checks = []
+  internal_port = 8080
+  processes = ["app"]
+  protocol = "tcp"
+  script_checks = []
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+    type = "connections"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
+# Set these secrets in Fly.io:
+# flyctl secrets set BINANCE_API_KEY=your_key
+# flyctl secrets set BINANCE_API_SECRET=your_secret
+# flyctl secrets set USE_TESTNET=true

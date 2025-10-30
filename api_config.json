@@ -1,0 +1,15 @@
+{
+    "binance_api_key": "ERwz17q3vkEbVxTXWZWQZ5hxxI94nOGnyeCAkKluCiK9NpfONkD2iSI6pMUGD5ZO",
+    "binance_api_secret": "VaaOtEOROLV4XgC5J2CjULoe8hvEjLoHLx8JQkImxkCQIs7xV6xjv1wKjsBPjkbu",
+    "testnet": true,
+    "trading_config": {
+        "symbols": ["BTCUSDT", "ETHUSDT", "ADAUSDT"],
+        "intervals": ["1h", "4h"],
+        "risk_per_trade": 0.01,
+        "min_confidence": 0.7,
+        "min_risk_reward": 2.0,
+        "max_positions": 3,
+        "account_balance": 100000,
+        "scan_frequency": 300
+    }
+}
