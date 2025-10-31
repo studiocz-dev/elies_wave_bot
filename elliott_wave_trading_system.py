@@ -160,6 +160,11 @@ class ElliottWaveTradingSystem:
         wave3 = waves['wave3']
         wave1 = waves['wave1']
         
+        # Calculate key levels upfront (used in multiple places)
+        pattern_low = wave1.low
+        pattern_high = wave5.high
+        wave4_low = wave4.low
+        
         # Determine pattern completion status
         wave5_end_idx = wave5.idx_end
         total_candles = len(df)
@@ -172,11 +177,6 @@ class ElliottWaveTradingSystem:
             
             # Check if Wave 5 extended beyond Wave 3 (bullish completion)
             if wave5.high > wave3.high:
-                
-                # Calculate key levels
-                pattern_low = wave1.low
-                pattern_high = wave5.high
-                wave4_low = wave4.low
                 
                 # Generate SELL signal (pattern completion, expect correction)
                 signal = {
