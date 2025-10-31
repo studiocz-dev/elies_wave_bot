@@ -38,8 +38,8 @@ class ElliottWaveTradingSystem:
         
         # Trading parameters
         self.risk_per_trade = 0.02  # 2% risk per trade
-        self.max_skip_value = 10    # Maximum skip value for wave detection
-        self.min_wave_duration = 5  # Minimum wave duration in periods
+        self.max_skip_value = 15    # Maximum skip value for wave detection (increased for more patterns)
+        self.min_wave_duration = 3  # Minimum wave duration in periods (relaxed from 5)
         
         # Trading state
         self.active_signals = {}
@@ -49,14 +49,14 @@ class ElliottWaveTradingSystem:
         print(f"📊 Risk per trade: {self.risk_per_trade*100}%")
         print(f"🌊 Max skip value: {self.max_skip_value}")
     
-    def analyze_symbol(self, symbol, interval='1h', lookback=200):
+    def analyze_symbol(self, symbol, interval='1h', lookback=500):
         """
         Perform Elliott Wave analysis on a trading pair
         
         Args:
             symbol: Trading pair (e.g., 'BTCUSDT')
             interval: Timeframe for analysis
-            lookback: Number of candles to analyze
+            lookback: Number of candles to analyze (increased to 500 for better pattern detection)
             
         Returns:
             Dictionary with analysis results and trading signals
@@ -101,10 +101,10 @@ class ElliottWaveTradingSystem:
         patterns_found = 0
         
         # Search for patterns from multiple starting points
-        for start_idx in range(start_range, end_range, 10):
+        for start_idx in range(start_range, end_range, 5):  # More frequent checks (every 5 candles)
             
             # Look for bullish impulse waves (starting from lows)
-            for option in list(wave_options.options_sorted)[:50]:  # Limit search for performance
+            for option in list(wave_options.options_sorted)[:100]:  # Increased from 50 to 100 for more patterns
                 
                 waves = wa.find_impulsive_wave(idx_start=start_idx, wave_config=option.values)
                 
@@ -118,6 +118,11 @@ class ElliottWaveTradingSystem:
                             
                             # Analyze pattern for trading signals
                             signal = self._analyze_pattern_for_signals(pattern, df, symbol, rule.name)
+                            
+                            # Debug logging
+                            if signal:
+                                print(f"   ✅ Signal generated: {signal['type']} at {signal['entry_price']:.2f} (confidence: {signal['confidence']:.2%})")
+                            
                             if signal:
                                 analysis_results['bullish_patterns'].append({
                                     'start_idx': start_idx,
@@ -128,13 +133,17 @@ class ElliottWaveTradingSystem:
                                 })
                                 analysis_results['signals'].append(signal)
             
-            # Limit computation time
-            if patterns_found > 10:
+            # Limit computation time (increased limit for more signals)
+            if patterns_found > 25:
                 break
         
         print(f"✅ Analysis complete: {patterns_found} patterns found")
         print(f"📈 Bullish patterns: {len(analysis_results['bullish_patterns'])}")
         print(f"🎯 Trading signals: {len(analysis_results['signals'])}")
+        
+        # Debug: Log pattern detection details
+        if patterns_found > 0 and len(analysis_results['signals']) == 0:
+            print(f"⚠️  DEBUG: Found {patterns_found} patterns but 0 signals - patterns may not meet signal criteria")
         
         return analysis_results
     
@@ -158,8 +167,8 @@ class ElliottWaveTradingSystem:
         # Signal generation logic
         signal = None
         
-        # Pattern recently completed (within last 5 candles)
-        if total_candles - wave5_end_idx <= 5:
+        # Pattern recently completed (within last 15 candles - RELAXED from 5 for more signals)
+        if total_candles - wave5_end_idx <= 15:
             
             # Check if Wave 5 extended beyond Wave 3 (bullish completion)
             if wave5.high > wave3.high:
@@ -183,8 +192,8 @@ class ElliottWaveTradingSystem:
                     'risk_reward_ratio': self._calculate_risk_reward(current_price, pattern_high * 1.02, wave4_low)
                 }
         
-        # Pattern in Wave 4 correction (potential Wave 5 entry)
-        elif wave4.idx_end <= total_candles - 1 <= wave5.idx_start + 2:
+        # Pattern in Wave 4 correction (potential Wave 5 entry) - RELAXED timing window
+        elif wave4.idx_end <= total_candles - 1 <= wave5.idx_start + 10:
             
             # Check if in Wave 4 correction zone
             if wave4_low <= current_price <= wave3.high * 0.8:
@@ -219,22 +228,26 @@ class ElliottWaveTradingSystem:
         wave3_length = waves['wave3'].length
         wave5_length = waves['wave5'].length
         
-        # Wave 3 should be strongest or second strongest
-        if wave3_length >= max(wave1_length, wave5_length):
-            confidence += 0.2
-        
-        # Check Fibonacci relationships
-        wave2_retrace = waves['wave2'].length / wave1_length
-        if 0.38 <= wave2_retrace <= 0.618:  # Fibonacci retracement
+        # Wave 3 should be strongest or second strongest (RELAXED - any strong wave counts)
+        if wave3_length >= max(wave1_length * 0.9, wave5_length * 0.9):
             confidence += 0.15
         
-        wave4_retrace = waves['wave4'].length / wave3_length
-        if 0.25 <= wave4_retrace <= 0.5:    # Shallow Wave 4
-            confidence += 0.15
+        # Check Fibonacci relationships (RELAXED ranges for more patterns)
+        wave2_retrace = waves['wave2'].length / wave1_length if wave1_length > 0 else 0
+        if 0.25 <= wave2_retrace <= 0.786:  # Expanded from 0.38-0.618
+            confidence += 0.12
+        
+        wave4_retrace = waves['wave4'].length / wave3_length if wave3_length > 0 else 0
+        if 0.15 <= wave4_retrace <= 0.618:    # Expanded from 0.25-0.5
+            confidence += 0.12
         
         # Duration proportions
         total_duration = waves['wave5'].idx_end - waves['wave1'].idx_start
         if total_duration >= self.min_wave_duration:
+            confidence += 0.08
+        
+        # Additional quality bonus: check if Wave 4 doesn't overlap Wave 1 (classical rule)
+        if waves['wave4'].low > waves['wave1'].high:
             confidence += 0.1
         
         return min(confidence, 1.0)
