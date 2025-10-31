@@ -167,8 +167,8 @@ class ElliottWaveTradingSystem:
         # Signal generation logic
         signal = None
         
-        # Pattern recently completed (within last 15 candles - RELAXED from 5 for more signals)
-        if total_candles - wave5_end_idx <= 15:
+        # Pattern recently completed (within last 30 candles - EXPANDED for more opportunities)
+        if total_candles - wave5_end_idx <= 30:
             
             # Check if Wave 5 extended beyond Wave 3 (bullish completion)
             if wave5.high > wave3.high:
@@ -192,8 +192,8 @@ class ElliottWaveTradingSystem:
                     'risk_reward_ratio': self._calculate_risk_reward(current_price, pattern_high * 1.02, wave4_low)
                 }
         
-        # Pattern in Wave 4 correction (potential Wave 5 entry) - RELAXED timing window
-        elif wave4.idx_end <= total_candles - 1 <= wave5.idx_start + 10:
+        # Pattern in Wave 4 correction (potential Wave 5 entry) - EXPANDED timing window
+        elif wave4.idx_end <= total_candles - 1 <= wave5.idx_start + 20:
             
             # Check if in Wave 4 correction zone
             if wave4_low <= current_price <= wave3.high * 0.8:
@@ -210,6 +210,26 @@ class ElliottWaveTradingSystem:
                     'confidence': self._calculate_pattern_confidence(pattern),
                     'reason': f"Elliott Wave {rule_name} Wave 4 correction - expect Wave 5",
                     'risk_reward_ratio': self._calculate_risk_reward(current_price, wave4_low * 0.98, wave3.high)
+                }
+        
+        # NEW: Pattern approaching completion (Wave 5 in progress, near the end)
+        elif wave5.idx_start <= total_candles - 1 <= wave5_end_idx + 5:
+            
+            # If current price is near or beyond Wave 3 high, potential sell setup
+            if current_price >= wave3.high * 0.95:  # Within 5% of Wave 3 high
+                
+                # Generate SELL signal (Wave 5 extension completing)
+                signal = {
+                    'type': 'SELL',
+                    'symbol': symbol,
+                    'rule': rule_name,
+                    'entry_price': current_price,
+                    'stop_loss': max(current_price * 1.02, wave5.high * 1.01),  # Adaptive stop
+                    'take_profit_1': wave4_low,
+                    'take_profit_2': pattern_low,
+                    'confidence': self._calculate_pattern_confidence(pattern) * 0.9,  # Slightly lower confidence
+                    'reason': f"Elliott Wave {rule_name} Wave 5 extending - early reversal signal",
+                    'risk_reward_ratio': self._calculate_risk_reward(current_price, current_price * 1.02, wave4_low)
                 }
         
         return signal

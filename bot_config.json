@@ -29,7 +29,7 @@
         "2h",
         "4h"
     ],
-    "scan_frequency": 180,
+    "scan_frequency": 120,
     "max_positions": 5,
     "risk_per_trade": 0.025,
     "account_balance": 100000,
