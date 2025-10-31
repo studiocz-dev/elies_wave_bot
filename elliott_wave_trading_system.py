@@ -232,6 +232,26 @@ class ElliottWaveTradingSystem:
                     'risk_reward_ratio': self._calculate_risk_reward(current_price, current_price * 1.02, wave4_low)
                 }
         
+        # DEBUG: Log why pattern didn't generate a signal
+        if signal is None:
+            candles_since_completion = total_candles - wave5_end_idx
+            wave4_end_to_current = total_candles - 1 - wave4.idx_end
+            wave5_start_to_current = total_candles - 1 - wave5.idx_start
+            
+            print(f"   🔍 DEBUG: Pattern rejected for {symbol}:")
+            print(f"      • Wave 5 ended {candles_since_completion} candles ago (need ≤30)")
+            print(f"      • Current position: candle {total_candles-1}, Wave 4 ended at {wave4.idx_end}, Wave 5: {wave5.idx_start}-{wave5_end_idx}")
+            print(f"      • Wave 5 high: ${wave5.high:.2f}, Wave 3 high: ${wave3.high:.2f}, Current: ${current_price:.2f}")
+            print(f"      • In Wave 4 zone? {wave4_low <= current_price <= wave3.high * 0.8} (range: ${wave4_low:.2f} - ${wave3.high * 0.8:.2f})")
+            
+            # Check which condition was closest
+            if candles_since_completion <= 50:
+                print(f"      ⚠️  Close! Only {candles_since_completion - 30} candles over limit")
+            if wave5.high > wave3.high:
+                print(f"      ✅ Wave 5 extended past Wave 3 (good structure)")
+            else:
+                print(f"      ❌ Wave 5 did NOT extend past Wave 3 (weak pattern)")
+        
         return signal
     
     def _calculate_pattern_confidence(self, pattern):

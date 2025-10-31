@@ -95,7 +95,9 @@ class WaveAnalyzer:
             if self.verbose: print("Wave 4 has no End in Data")
             return False
 
-        if wave2.low > np.min(self.lows[wave2.low_idx:wave4.low_idx]):
+        # Check if array slice is not empty before calling np.min
+        wave2_to_4_lows = self.lows[wave2.low_idx:wave4.low_idx]
+        if len(wave2_to_4_lows) > 0 and wave2.low > np.min(wave2_to_4_lows):
             return False
 
         wave5 = MonoWaveUp(lows=self.lows, highs=self.highs, dates=self.dates, idx_start=wave4_end, skip=wave_config[4])
@@ -105,7 +107,9 @@ class WaveAnalyzer:
             if self.verbose: print("Wave 5 has no End in Data")
             return False
 
-        if self.lows[wave4.low_idx:wave5.high_idx].any() and wave4.low > np.min(self.lows[wave4.low_idx:wave5.high_idx]):
+        # Check if array slice is not empty before calling np.min
+        wave4_to_5_lows = self.lows[wave4.low_idx:wave5.high_idx]
+        if len(wave4_to_5_lows) > 0 and wave4_to_5_lows.any() and wave4.low > np.min(wave4_to_5_lows):
             if self.verbose: print('Low of Wave 4 higher than a low between Wave 4 and Wave 5')
             return False
 
