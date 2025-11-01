@@ -83,6 +83,9 @@ class EnhancedElliottWaveTradingBot:
         self.safe_log("info", "Starting Enhanced Elliott Wave Trading Bot...", "🚀")
         self.safe_log("info", f"Monitoring {len(self.config['symbols'])} symbols across {len(self.config['intervals'])} timeframes", "📊")
         
+        # Check account balance
+        self.check_account_balance()
+        
         try:
             while self.bot_running:
                 # Check daily loss limit
@@ -108,6 +111,25 @@ class EnhancedElliottWaveTradingBot:
             self.safe_log("error", f"Bot error: {str(e)}", "❌")
         finally:
             self.shutdown()
+    
+    def check_account_balance(self):
+        """Check and display Binance Futures account balance"""
+        try:
+            account = self.data_fetcher.client.futures_account()
+            total_balance = float(account['totalWalletBalance'])
+            available_balance = float(account['availableBalance'])
+            
+            self.safe_log("info", 
+                f"💰 Account Balance: ${total_balance:.2f} USDT "
+                f"(Available: ${available_balance:.2f})", "💰")
+            
+            if available_balance < 10:
+                self.safe_log("warning", 
+                    f"⚠️ Low balance! Available: ${available_balance:.2f} USDT. "
+                    f"Minimum recommended: $10 USDT", "⚠️")
+                
+        except Exception as e:
+            self.safe_log("error", f"Error checking account balance: {str(e)}", "❌")
     
     def check_daily_loss_limit(self) -> bool:
         """Check if daily loss limit has been reached"""
@@ -186,7 +208,7 @@ class EnhancedElliottWaveTradingBot:
             return True  # Default to allow trading if check fails
     
     def execute_trade(self, signal: Dict, symbol: str, interval: str):
-        """Execute trade with enhanced risk management"""
+        """Execute trade with enhanced risk management and REAL order placement"""
         try:
             # Calculate position size based on risk
             position_size = self.calculate_position_size(signal)
@@ -195,29 +217,106 @@ class EnhancedElliottWaveTradingBot:
                 self.safe_log("warning", f"Invalid position size for {symbol}", "⚠️")
                 return
             
-            # Create trade order
+            # Get current price
+            current_price = float(self.data_fetcher.client.futures_symbol_ticker(symbol=symbol)['price'])
+            
+            # Calculate quantity based on position size in USDT
+            quantity = position_size / current_price
+            
+            # Get symbol info to round quantity properly
+            symbol_info = self.data_fetcher.client.futures_exchange_info()
+            quantity_precision = 0
+            for s in symbol_info['symbols']:
+                if s['symbol'] == symbol:
+                    for f in s['filters']:
+                        if f['filterType'] == 'LOT_SIZE':
+                            step_size = float(f['stepSize'])
+                            quantity_precision = len(str(step_size).rstrip('0').split('.')[-1])
+                            break
+                    break
+            
+            # Round quantity to proper precision
+            quantity = round(quantity, quantity_precision)
+            
+            if quantity <= 0:
+                self.safe_log("warning", f"Quantity too small for {symbol}: {quantity}", "⚠️")
+                return
+            
+            # Determine order side
+            side = 'BUY' if signal['direction'] == 'LONG' else 'SELL'
+            
+            # Place MARKET order on Binance Futures
+            self.safe_log("info", f"📤 Placing {side} order for {symbol}: {quantity} @ ${current_price:.4f}", "🔵")
+            
+            order = self.data_fetcher.client.futures_create_order(
+                symbol=symbol,
+                side=side,
+                type='MARKET',
+                quantity=quantity
+            )
+            
+            # Calculate stop loss and take profit prices
+            entry_price = float(order['avgPrice']) if 'avgPrice' in order else current_price
+            stop_loss_pct = signal.get('stop_loss_distance', self.config['stop_loss_percentage'])
+            take_profit_pct = stop_loss_pct * signal['risk_reward_ratio']
+            
+            if side == 'BUY':
+                stop_loss_price = entry_price * (1 - stop_loss_pct)
+                take_profit_price = entry_price * (1 + take_profit_pct)
+            else:
+                stop_loss_price = entry_price * (1 + stop_loss_pct)
+                take_profit_price = entry_price * (1 - take_profit_pct)
+            
+            # Place STOP LOSS order
+            sl_side = 'SELL' if side == 'BUY' else 'BUY'
+            sl_order = self.data_fetcher.client.futures_create_order(
+                symbol=symbol,
+                side=sl_side,
+                type='STOP_MARKET',
+                stopPrice=round(stop_loss_price, 2),
+                quantity=quantity,
+                closePosition=True
+            )
+            
+            # Place TAKE PROFIT order
+            tp_order = self.data_fetcher.client.futures_create_order(
+                symbol=symbol,
+                side=sl_side,
+                type='TAKE_PROFIT_MARKET',
+                stopPrice=round(take_profit_price, 2),
+                quantity=quantity,
+                closePosition=True
+            )
+            
+            # Store position data
             trade_data = {
                 'symbol': symbol,
                 'interval': interval,
                 'signal': signal,
                 'size': position_size,
+                'quantity': quantity,
+                'entry_price': entry_price,
+                'stop_loss': stop_loss_price,
+                'take_profit': take_profit_price,
                 'entry_time': datetime.now(),
-                'status': 'active'
+                'status': 'active',
+                'order_id': order['orderId'],
+                'sl_order_id': sl_order['orderId'],
+                'tp_order_id': tp_order['orderId']
             }
             
-            # For demo purposes, we'll simulate the trade
-            # In live trading, you would place actual orders here
             self.active_positions[f"{symbol}_{interval}"] = trade_data
             self.trade_count += 1
             
             self.safe_log("info", 
-                f"TRADE EXECUTED: {signal['direction']} {symbol} {interval} "
-                f"Size: {position_size:.2f} USDT "
+                f"✅ TRADE EXECUTED: {side} {symbol} {interval} "
+                f"Qty: {quantity} @ ${entry_price:.4f} "
+                f"SL: ${stop_loss_price:.4f} TP: ${take_profit_price:.4f} "
                 f"Confidence: {signal['confidence']:.1%} "
                 f"R/R: {signal['risk_reward_ratio']:.2f}", "💰")
             
         except Exception as e:
-            self.safe_log("error", f"Error executing trade: {str(e)}", "❌")
+            self.safe_log("error", f"❌ Error executing trade for {symbol}: {str(e)}", "❌")
     
     def calculate_position_size(self, signal: Dict) -> float:
         """Calculate position size based on risk management"""
@@ -241,15 +340,31 @@ class EnhancedElliottWaveTradingBot:
             return 0
     
     def manage_positions(self):
-        """Enhanced position management with trailing stops"""
+        """Enhanced position management - check if positions are still open"""
         for position_id, position in list(self.active_positions.items()):
             try:
-                # Check if position should be closed (demo logic)
-                # In live trading, you would check actual market prices
+                symbol = position['symbol']
                 
-                # Simulate position closure after some time (demo)
-                if (datetime.now() - position['entry_time']).seconds > 3600:  # 1 hour
-                    self.close_position(position_id, "Time-based closure (demo)")
+                # Check if position is still open on Binance
+                positions = self.data_fetcher.client.futures_position_information(symbol=symbol)
+                
+                position_open = False
+                for pos in positions:
+                    if pos['symbol'] == symbol:
+                        position_amt = float(pos['positionAmt'])
+                        if abs(position_amt) > 0:
+                            position_open = True
+                            # Update unrealized PnL
+                            unrealized_pnl = float(pos['unRealizedProfit'])
+                            position['unrealized_pnl'] = unrealized_pnl
+                        break
+                
+                # If position is closed, remove from tracking
+                if not position_open:
+                    self.safe_log("info", 
+                        f"✅ Position closed by SL/TP: {symbol} "
+                        f"P&L: ${position.get('unrealized_pnl', 0):.2f}", "💹")
+                    del self.active_positions[position_id]
                     
             except Exception as e:
                 self.safe_log("error", f"Error managing position {position_id}: {str(e)}", "❌")
