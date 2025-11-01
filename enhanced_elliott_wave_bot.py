@@ -168,9 +168,11 @@ class EnhancedElliottWaveTradingBot:
                         ]
                         
                         if valid_signals:
-                            self.safe_log("info", f"Valid signals found for {symbol} {interval}: {len(valid_signals)}", "✅")
+                            self.safe_log("info", f"✅ Valid signals found for {symbol} {interval}: {len(valid_signals)}", "✅")
                             
                             for signal in valid_signals:
+                                self.safe_log("info", f"🎯 Attempting to execute trade for {symbol} {interval}", "")
+                                self.safe_log("info", f"   Signal details: {signal.get('direction')} @ {signal.get('entry_price')} (confidence: {signal.get('confidence'):.1%})", "")
                                 self.execute_trade(signal, symbol, interval)
                     
                 except Exception as e:
@@ -209,20 +211,29 @@ class EnhancedElliottWaveTradingBot:
     
     def execute_trade(self, signal: Dict, symbol: str, interval: str):
         """Execute trade with enhanced risk management and REAL order placement"""
+        self.safe_log("info", f"🔵 EXECUTE_TRADE called for {symbol} {interval}", "")
+        
         try:
+            self.safe_log("info", f"   Step 1: Calculating position size...", "")
             # Calculate position size based on risk
             position_size = self.calculate_position_size(signal)
+            self.safe_log("info", f"   Position size calculated: ${position_size:.2f} USDT", "")
             
             if position_size <= 0:
-                self.safe_log("warning", f"Invalid position size for {symbol}", "⚠️")
+                self.safe_log("warning", f"⚠️ Invalid position size for {symbol}: ${position_size}", "⚠️")
                 return
             
+            self.safe_log("info", f"   Step 2: Getting current price from Binance...", "")
             # Get current price
             current_price = float(self.data_fetcher.client.futures_symbol_ticker(symbol=symbol)['price'])
+            self.safe_log("info", f"   Current price: ${current_price:.4f}", "")
             
+            self.safe_log("info", f"   Step 3: Calculating quantity...", "")
             # Calculate quantity based on position size in USDT
             quantity = position_size / current_price
+            self.safe_log("info", f"   Raw quantity: {quantity}", "")
             
+            self.safe_log("info", f"   Step 4: Getting symbol precision from Binance...", "")
             # Get symbol info to round quantity properly
             symbol_info = self.data_fetcher.client.futures_exchange_info()
             quantity_precision = 0
@@ -232,21 +243,24 @@ class EnhancedElliottWaveTradingBot:
                         if f['filterType'] == 'LOT_SIZE':
                             step_size = float(f['stepSize'])
                             quantity_precision = len(str(step_size).rstrip('0').split('.')[-1])
+                            self.safe_log("info", f"   Found precision: {quantity_precision} decimals (step_size: {step_size})", "")
                             break
                     break
             
             # Round quantity to proper precision
             quantity = round(quantity, quantity_precision)
+            self.safe_log("info", f"   Rounded quantity: {quantity}", "")
             
             if quantity <= 0:
-                self.safe_log("warning", f"Quantity too small for {symbol}: {quantity}", "⚠️")
+                self.safe_log("warning", f"⚠️ Quantity too small for {symbol}: {quantity}", "⚠️")
                 return
             
             # Determine order side
             side = 'BUY' if signal['direction'] == 'LONG' else 'SELL'
             
             # Place MARKET order on Binance Futures
-            self.safe_log("info", f"📤 Placing {side} order for {symbol}: {quantity} @ ${current_price:.4f}", "🔵")
+            self.safe_log("info", f"📤 Step 5: Placing {side} MARKET order on Binance Futures...", "🔵")
+            self.safe_log("info", f"   Symbol: {symbol}, Side: {side}, Quantity: {quantity}, Price: ${current_price:.4f}", "")
             
             order = self.data_fetcher.client.futures_create_order(
                 symbol=symbol,
@@ -255,17 +269,52 @@ class EnhancedElliottWaveTradingBot:
                 quantity=quantity
             )
             
-            # Calculate stop loss and take profit prices
-            entry_price = float(order['avgPrice']) if 'avgPrice' in order else current_price
+            self.safe_log("info", f"✅ MARKET order placed successfully!", "")
+            self.safe_log("info", f"   Order ID: {order.get('orderId')}", "")
+            
+            # Get actual fill price by querying the order
+            self.safe_log("info", f"   Fetching actual fill price...", "")
+            import time
+            time.sleep(0.5)  # Brief delay to ensure order is filled
+            
+            filled_order = self.data_fetcher.client.futures_get_order(
+                symbol=symbol, 
+                orderId=order['orderId']
+            )
+            
+            # Calculate entry price from filled order
+            if float(filled_order['executedQty']) > 0:
+                entry_price = float(filled_order['cumQuote']) / float(filled_order['executedQty'])
+            else:
+                entry_price = current_price
+                
+            self.safe_log("info", f"   ✅ Actual fill price: ${entry_price:.4f}", "")
+            
+            # Get price precision for stop orders
+            self.safe_log("info", f"   Getting price precision for {symbol}...", "")
+            price_precision = 2  # Default
+            for s in symbol_info['symbols']:
+                if s['symbol'] == symbol:
+                    for f in s['filters']:
+                        if f['filterType'] == 'PRICE_FILTER':
+                            tick_size = float(f['tickSize'])
+                            price_precision = len(str(tick_size).rstrip('0').split('.')[-1])
+                            self.safe_log("info", f"   Price precision: {price_precision} decimals", "")
+                            break
+                    break
+            
             stop_loss_pct = signal.get('stop_loss_distance', self.config['stop_loss_percentage'])
             take_profit_pct = stop_loss_pct * signal['risk_reward_ratio']
             
             if side == 'BUY':
-                stop_loss_price = entry_price * (1 - stop_loss_pct)
-                take_profit_price = entry_price * (1 + take_profit_pct)
+                stop_loss_price = round(entry_price * (1 - stop_loss_pct), price_precision)
+                take_profit_price = round(entry_price * (1 + take_profit_pct), price_precision)
             else:
-                stop_loss_price = entry_price * (1 + stop_loss_pct)
-                take_profit_price = entry_price * (1 - take_profit_pct)
+                stop_loss_price = round(entry_price * (1 + stop_loss_pct), price_precision)
+                take_profit_price = round(entry_price * (1 - take_profit_pct), price_precision)
+            
+            self.safe_log("info", f"   Step 6: Placing STOP LOSS order...", "")
+            self.safe_log("info", f"   SL Price: ${stop_loss_price:.4f} ({stop_loss_pct*100:.1f}% from entry)", "")
             
             # Place STOP LOSS order
             sl_side = 'SELL' if side == 'BUY' else 'BUY'
@@ -273,20 +322,27 @@ class EnhancedElliottWaveTradingBot:
                 symbol=symbol,
                 side=sl_side,
                 type='STOP_MARKET',
-                stopPrice=round(stop_loss_price, 2),
+                stopPrice=stop_loss_price,
                 quantity=quantity,
                 closePosition=True
             )
+            
+            self.safe_log("info", f"✅ STOP LOSS order placed! Order ID: {sl_order.get('orderId')}", "")
+            
+            self.safe_log("info", f"   Step 7: Placing TAKE PROFIT order...", "")
+            self.safe_log("info", f"   TP Price: ${take_profit_price:.4f} ({take_profit_pct*100:.1f}% from entry)", "")
             
             # Place TAKE PROFIT order
             tp_order = self.data_fetcher.client.futures_create_order(
                 symbol=symbol,
                 side=sl_side,
                 type='TAKE_PROFIT_MARKET',
-                stopPrice=round(take_profit_price, 2),
+                stopPrice=take_profit_price,
                 quantity=quantity,
                 closePosition=True
             )
+            
+            self.safe_log("info", f"✅ TAKE PROFIT order placed! Order ID: {tp_order.get('orderId')}", "")
             
             # Store position data
             trade_data = {
@@ -308,15 +364,33 @@ class EnhancedElliottWaveTradingBot:
             self.active_positions[f"{symbol}_{interval}"] = trade_data
             self.trade_count += 1
             
+            self.safe_log("info", "=" * 80, "")
             self.safe_log("info", 
-                f"✅ TRADE EXECUTED: {side} {symbol} {interval} "
-                f"Qty: {quantity} @ ${entry_price:.4f} "
-                f"SL: ${stop_loss_price:.4f} TP: ${take_profit_price:.4f} "
-                f"Confidence: {signal['confidence']:.1%} "
-                f"R/R: {signal['risk_reward_ratio']:.2f}", "💰")
+                f"🎉 TRADE SUCCESSFULLY EXECUTED! 🎉", "💰")
+            self.safe_log("info", 
+                f"   {side} {symbol} {interval}", "")
+            self.safe_log("info", 
+                f"   Quantity: {quantity} @ ${entry_price:.4f}", "")
+            self.safe_log("info", 
+                f"   Stop Loss: ${stop_loss_price:.4f} | Take Profit: ${take_profit_price:.4f}", "")
+            self.safe_log("info", 
+                f"   Confidence: {signal['confidence']:.1%} | R/R: {signal['risk_reward_ratio']:.2f}", "")
+            self.safe_log("info", 
+                f"   Market Order ID: {order.get('orderId')}", "")
+            self.safe_log("info", 
+                f"   SL Order ID: {sl_order.get('orderId')}", "")
+            self.safe_log("info", 
+                f"   TP Order ID: {tp_order.get('orderId')}", "")
+            self.safe_log("info", "=" * 80, "")
             
         except Exception as e:
-            self.safe_log("error", f"❌ Error executing trade for {symbol}: {str(e)}", "❌")
+            self.safe_log("error", "=" * 80, "")
+            self.safe_log("error", f"❌ ERROR EXECUTING TRADE for {symbol}!", "❌")
+            self.safe_log("error", f"   Error type: {type(e).__name__}", "")
+            self.safe_log("error", f"   Error message: {str(e)}", "")
+            import traceback
+            self.safe_log("error", f"   Traceback: {traceback.format_exc()}", "")
+            self.safe_log("error", "=" * 80, "")
     
     def calculate_position_size(self, signal: Dict) -> float:
         """Calculate position size based on risk management"""
