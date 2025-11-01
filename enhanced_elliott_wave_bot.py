@@ -3,6 +3,7 @@ Enhanced Elliott Wave Trading Bot with Configurable Settings
 Uses external configuration file for easy parameter adjustment
 """
 
+import os
 import time
 import logging
 from datetime import datetime
@@ -498,12 +499,21 @@ class EnhancedElliottWaveTradingBot:
 
 def main():
     """Main function to run the enhanced bot"""
-    # Bot configuration
-    API_KEY = "your_api_key_here"
-    API_SECRET = "your_api_secret_here"
-    USE_TESTNET = True
+    # Load API credentials from environment variables
+    API_KEY = os.getenv('BINANCE_API_KEY', '').strip().strip('"').strip("'")
+    API_SECRET = os.getenv('BINANCE_API_SECRET', '').strip().strip('"').strip("'")
+    USE_TESTNET = os.getenv('USE_TESTNET', 'true').lower() == 'true'
+    
+    # Validate API credentials
+    if not API_KEY or not API_SECRET or API_KEY == "your_api_key_here":
+        print("❌ ERROR: BINANCE_API_KEY and BINANCE_API_SECRET environment variables must be set!")
+        print("Please set them in Railway or your .env file")
+        return
     
     print("🚀 Enhanced Elliott Wave Trading Bot")
+    print("=" * 50)
+    print(f"✅ API Key loaded: {API_KEY[:10]}...{API_KEY[-10:]}")
+    print(f"✅ Using Testnet: {USE_TESTNET}")
     print("=" * 50)
     
     # Create and start the enhanced bot
