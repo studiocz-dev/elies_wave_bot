@@ -1,0 +1,7 @@
+# Deployment Force Trigger
+
+This file is used to force Railway redeployment.
+
+Last update: 2025-11-01 15:37 UTC
+
+If you see this in the logs, the new deployment worked!
