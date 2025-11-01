@@ -400,6 +400,11 @@ class EnhancedElliottWaveTradingBot:
             # Get stop loss distance from signal
             stop_loss_distance = signal.get('stop_loss_distance', self.config['stop_loss_percentage'])
             
+            # Prevent division by zero
+            if stop_loss_distance <= 0:
+                self.safe_log("warning", f"⚠️ Invalid stop loss distance: {stop_loss_distance}, using default 5%", "⚠️")
+                stop_loss_distance = 0.05  # Default 5%
+            
             # Calculate position size
             position_size = risk_amount / stop_loss_distance
             
@@ -410,7 +415,7 @@ class EnhancedElliottWaveTradingBot:
             return position_size
             
         except Exception as e:
-            self.safe_log("error", f"Error calculating position size: {str(e)}", "❌")
+            self.safe_log("error", f"❌ Error calculating position size: {str(e)}", "❌")
             return 0
     
     def manage_positions(self):
